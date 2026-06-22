@@ -1,6 +1,7 @@
 import { createServerClient } from '@supabase/ssr';
 import { NextResponse, type NextRequest } from 'next/server';
 
+export const runtime = 'nodejs';
 /**
  * Refreshes the Supabase auth session on every request and protects (app)
  * routes from unauthenticated access. This is mostly boilerplate from
