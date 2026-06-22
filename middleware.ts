@@ -1,46 +1,33 @@
-import { createServerClient } from '@supabase/ssr';
 import { NextResponse, type NextRequest } from 'next/server';
 
-export const runtime = 'nodejs';
 /**
- * Refreshes the Supabase auth session on every request and protects (app)
- * routes from unauthenticated access. This is mostly boilerplate from
- * Supabase's own Next.js SSR docs — kept here as-is rather than reinvented.
+ * Lightweight route protection: checks for the presence of a Supabase auth
+ * cookie rather than constructing a full @supabase/ssr client. This avoids
+ * a known Next.js 14.2.x + @supabase/ssr middleware incompatibility
+ * (__dirname is not defined) that occurs even with runtime = 'nodejs' set.
+ * Pages themselves still verify the real session client-side; this is a
+ * fast, cheap first-pass redirect only.
  */
-export async function middleware(request: NextRequest) {
-  let supabaseResponse = NextResponse.next({ request });
-
-  const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      cookies: {
-        getAll() {
-          return request.cookies.getAll();
-        },
-        setAll(cookiesToSet: any[]) {
-          cookiesToSet.forEach(({ name, value }) => request.cookies.set(name, value));
-          supabaseResponse = NextResponse.next({ request });
-          cookiesToSet.forEach(({ name, value, options }) =>
-            supabaseResponse.cookies.set(name, value, options)
-          );
-        },
-      },
-    }
-  );
-
-  const { data: { user } } = await supabase.auth.getUser();
-
-  const isAppRoute = request.nextUrl.pathname.startsWith('/home') ||
+export function middleware(request: NextRequest) {
+  const isAppRoute =
+    request.nextUrl.pathname.startsWith('/home') ||
     request.nextUrl.pathname.startsWith('/chat') ||
     request.nextUrl.pathname.startsWith('/trends');
 
-  if (isAppRoute && !user) {
+  if (!isAppRoute) {
+    return NextResponse.next();
+  }
+
+  const hasAuthCookie = request.cookies.getAll().some((c) =>
+    c.name.startsWith('sb-') && c.name.endsWith('-auth-token')
+  );
+
+  if (!hasAuthCookie) {
     const redirectUrl = new URL('/login', request.url);
     return NextResponse.redirect(redirectUrl);
   }
 
-  return supabaseResponse;
+  return NextResponse.next();
 }
 
 export const config = {
